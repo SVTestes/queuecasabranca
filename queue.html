@@ -111,11 +111,16 @@
         let updateInProgress = false;
         
         async function updateQueue(forceRefresh = false) {
-            if (updateInProgress) return;
+            if (updateInProgress) {
+                console.log('Update already in progress, skipping...');
+                return;
+            }
             
             updateInProgress = true;
             
             try {
+                console.log('Fetching queue count...');
+                
                 const url = forceRefresh ? 
                     `${SERVER_URL}/api/queue-count?force=true` : 
                     `${SERVER_URL}/api/queue-count`;
@@ -129,9 +134,14 @@
                 const data = await response.json();
                 const newCount = parseInt(data.count) || 0;
                 
+                console.log('Received queue count:', newCount);
+                
                 if (newCount !== lastKnownCount) {
+                    console.log(`Count updated: ${lastKnownCount} → ${newCount}`);
                     lastKnownCount = newCount;
                     document.getElementById('queueTotal').textContent = newCount;
+                } else {
+                    console.log('Count unchanged:', newCount);
                 }
 
             } catch (error) {
@@ -143,6 +153,7 @@
             }
         }
 
+        console.log('Queue monitor initialized');
         updateQueue();
         setInterval(updateQueue, 15000);
     </script>

@@ -20,11 +20,13 @@ const CACHE_DURATION = 5000; // 5 seconds
 async function getQueueCount() {
     const now = Date.now();
     if (now - lastUpdate < CACHE_DURATION) {
+        console.log('Using cached count:', cachedCount);
         return cachedCount;
     }
 
     let browser = null;
     try {
+        console.log('Starting new queue count request...');
         browser = await puppeteer.launch({
             headless: 'new',
             args: [
@@ -43,6 +45,7 @@ async function getQueueCount() {
         const page = await browser.newPage();
         await page.setDefaultNavigationTimeout(60000);
         
+        console.log('Navigating to FastGet...');
         await page.goto('https://app.fastget.com.br/#/panel/d55420f6-b1b2-11ef-9f40-029e72b0772d/QUEUE', {
             waitUntil: 'networkidle0',
             timeout: 60000
@@ -50,11 +53,14 @@ async function getQueueCount() {
 
         await page.waitForTimeout(5000);
         
+        console.log('Counting queue items...');
         const count = await page.evaluate(() => {
             const queueItems = document.querySelectorAll('div.item.font-bold');
+            console.log('Found queue items:', queueItems.length);
             return queueItems.length;
         });
 
+        console.log('Queue count result:', count);
         cachedCount = count;
         lastUpdate = now;
         
@@ -65,6 +71,7 @@ async function getQueueCount() {
         if (error.name === 'TimeoutError' || 
             error.message.includes('timeout') || 
             error.message.includes('navigation')) {
+            console.log('Navigation error, setting count to 0');
             cachedCount = 0;
             lastUpdate = now;
             return 0;
@@ -75,6 +82,7 @@ async function getQueueCount() {
         if (browser) {
             try {
                 await browser.close();
+                console.log('Browser closed successfully');
             } catch (error) {
                 console.error('Error closing browser:', error);
             }
@@ -91,10 +99,12 @@ app.get('/api/queue-count', async (req, res) => {
     try {
         const forceRefresh = req.query.force === 'true';
         if (forceRefresh) {
+            console.log('Force refresh requested');
             lastUpdate = 0; // Clear cache
         }
         
         const count = await getQueueCount();
+        console.log('API response:', { count });
         res.json({ count });
     } catch (error) {
         console.error('API error:', error);
@@ -105,4 +115,5 @@ app.get('/api/queue-count', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Queue monitor ready at http://localhost:${PORT}`);
 }); 
