@@ -5,6 +5,10 @@ const path = require('path');
 
 const app = express();
 app.use(cors());
+
+// Serve static files from current directory with explicit paths
+app.use('/Logo', express.static(path.join(__dirname, 'Logo')));
+app.use('/fonts', express.static(path.join(__dirname, 'fonts')));
 app.use(express.static(path.join(__dirname)));
 
 // Serve queue.html at the root route
@@ -12,21 +16,21 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'queue.html'));
 });
 
-// Cache the queue count
+// Cache the queue count to avoid too frequent scraping
 let cachedCount = 0;
 let lastUpdate = 0;
-const CACHE_DURATION = 5000; // 5 seconds
+const CACHE_DURATION = 10000; // 10 seconds
 
 async function getQueueCount() {
     const now = Date.now();
     if (now - lastUpdate < CACHE_DURATION) {
-        console.log('Using cached count:', cachedCount);
+        console.log('Returning cached count:', cachedCount);
         return cachedCount;
     }
 
     let browser = null;
     try {
-        console.log('Starting new queue count request...');
+        console.log('Launching browser...');
         browser = await puppeteer.launch({
             headless: 'new',
             args: [
@@ -51,38 +55,34 @@ async function getQueueCount() {
             timeout: 60000
         });
 
-        await page.waitForTimeout(5000);
-        
-        console.log('Counting queue items...');
-        const count = await page.evaluate(() => {
-            const queueItems = document.querySelectorAll('div.item.font-bold');
-            console.log('Found queue items:', queueItems.length);
-            return queueItems.length;
+        console.log('Waiting for queue items...');
+        await page.waitForSelector('div.item.font-bold', { 
+            visible: true,
+            timeout: 30000 
         });
 
-        console.log('Queue count result:', count);
+        console.log('Counting queue items...');
+        const count = await page.evaluate(() => {
+            const items = document.querySelectorAll('div.item.font-bold');
+            console.log('Found items:', items.length);
+            return items.length;
+        });
+
+        console.log('Got queue count:', count);
+
+        // Update cache
         cachedCount = count;
         lastUpdate = now;
         
         return count;
     } catch (error) {
         console.error('Error fetching queue count:', error);
-        
-        if (error.name === 'TimeoutError' || 
-            error.message.includes('timeout') || 
-            error.message.includes('navigation')) {
-            console.log('Navigation error, setting count to 0');
-            cachedCount = 0;
-            lastUpdate = now;
-            return 0;
-        }
-        
+        // Return last known count if there's an error
         return cachedCount;
     } finally {
         if (browser) {
             try {
                 await browser.close();
-                console.log('Browser closed successfully');
             } catch (error) {
                 console.error('Error closing browser:', error);
             }
@@ -97,23 +97,17 @@ app.get('/health', (req, res) => {
 
 app.get('/api/queue-count', async (req, res) => {
     try {
-        const forceRefresh = req.query.force === 'true';
-        if (forceRefresh) {
-            console.log('Force refresh requested');
-            lastUpdate = 0; // Clear cache
-        }
-        
+        console.log('Received request for queue count');
         const count = await getQueueCount();
-        console.log('API response:', { count });
+        console.log('Sending response:', { count });
         res.json({ count });
     } catch (error) {
         console.error('API error:', error);
-        res.status(500).json({ error: 'Failed to get queue count' });
+        res.status(500).json({ error: 'Failed to get queue count', message: error.message });
     }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`Queue monitor ready at http://localhost:${PORT}`);
 }); 

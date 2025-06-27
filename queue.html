@@ -102,60 +102,43 @@
     </div>
     <div class="queue-container">
         <div class="queue-total" id="queueTotal">0</div>
-        <button class="refresh-button" onclick="updateQueue(true)">Atualizar</button>
+        <button class="refresh-button" onclick="updateQueue()">Atualizar</button>
     </div>
 
     <script>
+        // Server URL - Change this after deployment
         const SERVER_URL = window.location.origin;
-        let lastKnownCount = 0;
-        let updateInProgress = false;
         
-        async function updateQueue(forceRefresh = false) {
-            if (updateInProgress) {
-                console.log('Update already in progress, skipping...');
-                return;
-            }
-            
-            updateInProgress = true;
-            
+        async function updateQueue() {
             try {
                 console.log('Fetching queue count...');
-                
-                const url = forceRefresh ? 
-                    `${SERVER_URL}/api/queue-count?force=true` : 
-                    `${SERVER_URL}/api/queue-count`;
-                
-                const response = await fetch(url);
+                const response = await fetch(`${SERVER_URL}/api/queue-count`);
+                console.log('Response:', response);
 
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch queue count: ${response.status}`);
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `Failed to fetch queue count: ${response.status} ${response.statusText}`);
                 }
 
                 const data = await response.json();
-                const newCount = parseInt(data.count) || 0;
-                
-                console.log('Received queue count:', newCount);
-                
-                if (newCount !== lastKnownCount) {
-                    console.log(`Count updated: ${lastKnownCount} → ${newCount}`);
-                    lastKnownCount = newCount;
-                    document.getElementById('queueTotal').textContent = newCount;
-                } else {
-                    console.log('Count unchanged:', newCount);
-                }
+                console.log('Received data:', data);
+
+                // Update the total count, ensuring 0 is displayed when count is 0 or undefined
+                const queueTotal = document.getElementById('queueTotal');
+                queueTotal.textContent = data.count || '0';
 
             } catch (error) {
                 console.error('Error updating queue:', error);
-                lastKnownCount = 0;
                 document.getElementById('queueTotal').textContent = '0';
-            } finally {
-                updateInProgress = false;
             }
         }
 
-        console.log('Queue monitor initialized');
+        // Update immediately when page loads
+        console.log('Page loaded, starting queue updates...');
         updateQueue();
-        setInterval(updateQueue, 15000);
+
+        // Auto-refresh every 30 seconds
+        setInterval(updateQueue, 30000);
     </script>
 </body>
 </html> 
